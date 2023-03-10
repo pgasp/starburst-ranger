@@ -1,0 +1,13 @@
+{{- if .Values.initFile }}
+# ------------------------------------------------------------------------------
+# Config/startup scripts
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scripts-configmap
+  labels:
+    name: scripts-configmap
+data:
+  {{ include "scripts" . | indent 2 }}
+{{- end }}

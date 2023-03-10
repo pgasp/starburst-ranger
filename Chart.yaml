@@ -1,0 +1,19 @@
+apiVersion: v2
+appVersion: 2.1.0-e.43
+dependencies:
+- name: starburst-charts-common
+  repository: file://../../starburst-charts-common/helm
+  version: 402.0.0
+description: Apache Ranger
+home: https://ranger.apache.org/
+icon: https://apache.org/favicons/favicon-32x32.png
+keywords:
+- ranger
+- rbac
+maintainers:
+- email: ecosystem@starburstdata.com
+  name: Starburst
+name: starburst-ranger
+sources:
+- https://github.com/starburstdata/starburst-ranger
+version: 402.0.0

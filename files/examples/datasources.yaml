@@ -1,0 +1,11 @@
+datasources:
+    - name: fake-starburst-1
+      host: starburst.fake-starburst-1-namespace
+      port: 8080
+      username: starburst_service1
+      password: Password123
+    - name: fake-starburst-2
+      host: starburst.fake-starburst-2-namespace
+      port: 8080
+      username: starburst_service2
+      password: Password123

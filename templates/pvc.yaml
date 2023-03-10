@@ -1,0 +1,12 @@
+{{- if eq .Values.database.type "internal" -}}
+{{- if .Values.database.internal.volume.persistentVolumeClaim -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ranger-postgresql-pvc
+  labels:
+    role: ranger-postgresql
+spec:
+  {{- toYaml .Values.database.internal.volume.persistentVolumeClaim | nindent 2 -}}
+{{- end -}}
+{{- end -}}

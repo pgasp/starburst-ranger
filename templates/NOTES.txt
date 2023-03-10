@@ -1,0 +1,8 @@
+{{- if eq .Values.expose.type "ingress" }}
+You can access Ranger at following host names:
+{{- range .Values.expose.ingress.hosts }}
+https://{{ . }}
+{{- end }}
+{{- end }}
+
+Initially you can login with username/password: admin/{{ .Values.admin.passwords.admin }}.

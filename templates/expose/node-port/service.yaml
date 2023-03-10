@@ -1,0 +1,21 @@
+{{- if eq .Values.expose.type "nodePort" }}
+{{- $nodePort := .Values.expose.nodePort }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $nodePort.name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+    {{- if $nodePort.extraLabels }}
+    {{- toYaml $nodePort.extraLabels | nindent 4 }}
+    {{- end }}
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: {{ $nodePort.ports.http.port }}
+      nodePort: {{ $nodePort.ports.http.nodePort }}
+      targetPort: {{ .Values.admin.port }}
+  selector:
+    {{- include "app.labels" . | nindent 4 }}
+{{- end }}

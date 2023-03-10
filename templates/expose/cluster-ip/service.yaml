@@ -1,0 +1,18 @@
+{{- if eq .Values.expose.type "clusterIp" }}
+{{- $clusterIp := .Values.expose.clusterIp }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $clusterIp.name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $clusterIp.ports.http.port }}
+      targetPort: {{ .Values.admin.port }}
+      protocol: TCP
+  selector:
+    {{- include "app.labels" . | nindent 4 }}
+{{- end }}

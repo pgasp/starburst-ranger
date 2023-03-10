@@ -1,0 +1,502 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranger
+  labels:
+    {{ include "app.labels" . | nindent 4 }}
+  {{- if .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml .Values.deploymentAnnotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      name: ranger
+      labels:
+        {{ include "app.labels" . | nindent 8 }}
+      annotations:
+        {{- include "ranger.config-checksums" . | nindent 8 }}
+      {{- if .Values.podAnnotations }}
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "app.imagePullSecretName" . | nindent 6 }}
+      {{- if .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      {{- end }}
+      containers:
+        - name: ranger-admin
+          image: "{{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag }}"
+          imagePullPolicy: {{ .Values.admin.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.admin.port }}
+              protocol: TCP
+          {{- if .Values.initFile }}
+          command: [ "/bin/bash" ]
+          args:
+            - "/init/initFile"
+            - "ranger-admin"
+            {{- range .Values.extraArguments }}
+            - "{{ . }}"
+            {{- end }}
+          {{- end }}
+          {{- with .Values.admin.envFrom }}
+          envFrom:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if eq .Values.database.type "internal" }}
+            - name: RANGER__db_name
+              value: "{{ .Values.database.internal.databaseName }}"
+            - name: RANGER__db_root_user
+              value: "{{ .Values.database.internal.databaseRootUser }}"
+            - name: RANGER__db_root_password
+              valueFrom:
+                secretKeyRef:
+                  key: databaseRootPassword
+                  name: ranger-database-password
+            - name: RANGER__db_user
+              value: "{{ .Values.database.internal.databaseUser }}"
+            - name: RANGER__db_password
+              valueFrom:
+                secretKeyRef:
+                  key: databasePassword
+                  name: ranger-database-password
+            - name: RANGER__db_host
+              value: localhost
+            - name: WAIT_FOR
+              value: "localhost:{{ .Values.database.internal.port }}"
+            {{- end }}
+            {{- if eq .Values.database.type "external" }}
+            - name: RANGER__db_name
+              value: "{{ .Values.database.external.databaseName }}"
+            - name: RANGER__db_root_user
+              value: "{{ .Values.database.external.databaseRootUser }}"
+            - name: RANGER__db_root_password
+              valueFrom:
+                secretKeyRef:
+                  key: databaseRootPassword
+                  name: ranger-database-password
+            - name: RANGER__db_user
+              value: "{{ .Values.database.external.databaseUser }}"
+            - name: RANGER__db_password
+              valueFrom:
+                secretKeyRef:
+                  key: databasePassword
+                  name: ranger-database-password
+            - name: RANGER__db_host
+              value: "{{ .Values.database.external.host }}"
+            - name: WAIT_FOR
+              value: "{{ .Values.database.external.host }}:{{ .Values.database.external.port }}"
+            {{- end }}
+            - name: RANGER__rangerAdmin_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.admin
+                  name: ranger-password-secret
+            - name: RANGER__rangerTagsync_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.tagsync
+                  name: ranger-password-secret
+            - name: RANGER__rangerUsersync_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.usersync
+                  name: ranger-password-secret
+            - name: RANGER__keyadmin_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.keyadmin
+                  name: ranger-password-secret
+            - name: WAIT_TIMEOUT
+              value: "15"
+            {{- if .Values.admin.truststore.secret }}
+            - name: RANGER__javax_net_ssl_trustStore
+              value: /truststore/truststore.jks
+            - name: RANGER__javax_net_ssl_trustStorePassword
+              valueFrom:
+                secretKeyRef:
+                  key: admin.truststore.password
+                  name: ranger-password-secret
+            {{- end }}
+            {{- if .Values.admin.keystore.secret }}
+            - name: RANGER__javax_net_ssl_keyStore
+              value: /keystore/keystore.jks
+            - name: RANGER__javax_net_ssl_keyStorePassword
+              valueFrom:
+                secretKeyRef:
+                  key: admin.keystore.password
+                  name: ranger-password-secret
+            {{- end }}
+            {{- if .Values.database.external.tls.enabled }}
+            - name: RANGER__db_ssl_enabled
+              value: "true"
+            - name: RANGER__db_ssl_verifyServerCertificate
+              value: "true"
+            - name: RANGER__db_ssl_required
+              value: "true"
+            {{- end }}
+            {{- range $key, $val := .Values.admin.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.initFile }}
+            - name: init-file
+              mountPath: /init
+              readOnly: true
+            - name: scripts-volume
+              mountPath: /scripts
+            - name: datasources-volume
+              mountPath: /config
+            {{- end }}
+            {{- if .Values.admin.truststore.secret }}
+            - name: admin-truststore-volume
+              mountPath: /truststore
+            {{- end }}
+            {{- if .Values.admin.keystore.secret }}
+            - name: admin-keystore-volume
+              mountPath: /keystore
+            {{- end }}
+            {{- if .Values.extraSecret.name }}
+            - name: extra-secret
+              mountPath: /extra-secret/
+              readOnly: true
+            {{- end }}
+            {{- include "app.volumeMounts" . | nindent 12 }}
+          {{- with .Values.admin.resources }}
+          resources:
+            {{- . | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.admin.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - grep 'ranger-admin started' /opt/ranger/starburst-ranger-server-admin-*/ews/logs/start.sh.log
+            failureThreshold: {{ .Values.admin.startupProbe.failureThreshold }}
+            periodSeconds: {{ .Values.admin.startupProbe.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          terminationMessagePolicy: FallbackToLogsOnError
+
+        {{- if eq .Values.database.type "internal" }}
+        - name: ranger-db
+          image: "{{ .Values.database.internal.image.repository }}:{{ .Values.database.internal.image.tag }}"
+          imagePullPolicy: {{ .Values.database.internal.image.pullPolicy }}
+          {{- with .Values.database.internal.envFrom }}
+          envFrom:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POSTGRES_DB
+              value: "{{ .Values.database.internal.databaseName }}"
+            - name: POSTGRES_USER
+              value: "{{ .Values.database.internal.databaseRootUser }}"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: databaseRootPassword
+                  name: ranger-database-password
+            - name: POSTGRESQL_DATABASE
+              value: "{{ .Values.database.internal.databaseName }}"
+            - name: POSTGRESQL_USER
+              value: "{{ .Values.database.internal.databaseRootUser }}"
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: databaseRootPassword
+                  name: ranger-database-password
+            {{- if .Values.database.internal.databaseAdminPassword }}
+            - name: POSTGRESQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: databaseAdminPassword
+                  name: ranger-database-password
+            {{- end }}
+            {{- range $key, $val := .Values.database.internal.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.database.internal.port }}
+          livenessProbe:
+            exec:
+              command:
+                - psql
+                - -h
+                - localhost
+                - -U
+                - {{ .Values.database.internal.databaseRootUser }}
+                - -c
+                - 'select 1;'
+                - {{ .Values.database.internal.databaseName }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgresql-storage
+              subPath: data
+            # dedicated mountpath for rhel based postgres images
+            - mountPath: /var/lib/pgsql/data
+              name: postgresql-storage
+              subPath: userdata
+          {{- with .Values.database.internal.resources }}
+          resources:
+            {{- . | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.database.internal.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          terminationMessagePolicy: FallbackToLogsOnError
+        {{- end }}
+
+        {{- if .Values.usersync.enabled }}
+        - name: ranger-usersync
+          image: "{{ .Values.usersync.image.repository }}:{{ .Values.usersync.image.tag }}"
+          imagePullPolicy: {{ .Values.usersync.image.pullPolicy }}
+          {{- if .Values.initFile }}
+          command: [ "/bin/bash" ]
+          args:
+            - "/init/initFile"
+            - "ranger-usersync"
+            {{- range .Values.extraArguments }}
+            - "{{ . }}"
+            {{- end }}
+          {{- end }}
+          {{- with .Values.usersync.envFrom }}
+          envFrom:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: RANGER__POLICY_MGR_URL
+              value: "http://localhost:{{ .Values.admin.port }}"
+            - name: WAIT_FOR
+              value: "localhost:{{ .Values.admin.port }}"
+            - name: WAIT_TIMEOUT
+              value: {{ mul .Values.admin.startupProbe.periodSeconds .Values.admin.startupProbe.failureThreshold | quote }}
+            - name: RANGER__SYNC_SOURCE
+              value: ldap
+            - name: RANGER__rangerUsersync_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.usersync
+                  name: ranger-password-secret
+            - name: RANGER__AUTH_SSL_ENABLED
+              value: "true"
+            {{- if .Values.usersync.tls.truststore.secret }}
+            - name: RANGER__AUTH_SSL_TRUSTSTORE_FILE
+              value: /truststore/truststore.jks
+            - name: RANGER__AUTH_SSL_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: usersync.tls.truststore.password
+                  name: ranger-password-secret
+            {{- end }}
+            {{- range $key, $val := .Values.usersync.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.initFile }}
+            - name: init-file
+              mountPath: /init
+              readOnly: true
+            - name: scripts-volume
+              mountPath: /scripts
+            {{- end }}
+            {{- if .Values.usersync.tls.truststore.secret }}
+            - name: usersync-truststore-volume
+              mountPath: /truststore
+            {{- end }}
+            {{- if .Values.extraSecret.name }}
+            - name: extra-secret
+              mountPath: /extra-secret/
+              readOnly: true
+            {{- end }}
+          {{- include "app.volumeMounts" . | nindent 12 }}
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /opt/ranger/starburst-ranger-server-usersync-*/ranger-usersync status | grep -q 'is running'
+            failureThreshold: {{ .Values.usersync.startupProbe.failureThreshold }}
+            periodSeconds: {{ .Values.usersync.startupProbe.periodSeconds }}
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /opt/ranger/starburst-ranger-server-usersync-*/ranger-usersync status | grep -q 'is running'
+            periodSeconds: 10
+            failureThreshold: 20
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /opt/ranger/starburst-ranger-server-usersync-*/ranger-usersync status | grep -q 'is running'
+            timeoutSeconds: 3
+          {{- with .Values.usersync.resources }}
+          resources:
+            {{- . | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.usersync.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          terminationMessagePolicy: FallbackToLogsOnError
+        {{- end }}
+      
+              {{- if .Values.tagsync.enabled }}
+        - name: ranger-tagsync
+          image: "{{ .Values.tagsync.image.repository }}:{{ .Values.tagsync.image.tag }}"
+          imagePullPolicy: {{ .Values.tagsync.image.pullPolicy }}
+          {{- if .Values.initFile }}
+          command: [ "/bin/bash" ]
+          args:
+            - "/init/initFile"
+            - "ranger-tagsync"
+            {{- range .Values.extraArguments }}
+            - "{{ . }}"
+            {{- end }}
+          {{- end }}
+          {{- with .Values.tagsync.envFrom }}
+          envFrom:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: RANGER__POLICY_MGR_URL
+              value: "http://localhost:{{ .Values.admin.port }}"
+            - name: WAIT_FOR
+              value: "localhost:{{ .Values.admin.port }}"
+            - name: RANGER__rangertagsync_password
+              valueFrom:
+                secretKeyRef:
+                  key: admin.passwords.tagsync
+                  name: ranger-password-secret
+            {{- range $key, $val := .Values.tagsync.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.initFile }}
+            - name: init-file
+              mountPath: /init
+              readOnly: true
+            - name: scripts-volume
+              mountPath: /scripts
+            {{- end }}
+            {{- if .Values.extraSecret.name }}
+            - name: extra-secret
+              mountPath: /extra-secret/
+              readOnly: true
+            {{- end }}
+          {{- include "app.volumeMounts" . | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /opt/ranger/starburst-ranger-server-tagsync-*/ranger-tagsync status | grep 'is running'            
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 20
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /opt/ranger/starburst-ranger-server-tagsync-*/ranger-tagsync status | grep 'is running'
+            initialDelaySeconds: 300
+            timeoutSeconds: 3
+          {{- with .Values.tagsync.resources }}
+          resources:
+            {{- . | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tagsync.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          terminationMessagePolicy: FallbackToLogsOnError
+        {{- end }}
+
+      volumes:
+        {{- if eq .Values.database.type "internal" }}
+        - name: postgresql-storage
+          {{- if .Values.database.internal.volume.persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: ranger-postgresql-pvc
+          {{- else if .Values.database.internal.volume.existingVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.database.internal.volume.existingVolumeClaim }}
+          {{- else }}
+          {{- .Values.database.internal.volume | toYaml | nindent 10 }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.initFile }}
+        - name: init-file
+          secret:
+            secretName: {{ template "app.init-file-secret.name" . }}
+        - name: scripts-volume
+          configMap:
+            name: scripts-configmap
+            defaultMode: 0755
+        - name: datasources-volume
+          secret:
+            secretName: {{ template "ranger.datasources-secret.name" . }}
+        {{- end }}
+        {{- if .Values.usersync.tls.truststore.secret }}
+        - name: usersync-truststore-volume
+          secret:
+            secretName: {{ .Values.usersync.tls.truststore.secret }}
+        {{- end }}
+        {{- if .Values.admin.truststore.secret }}
+        - name: admin-truststore-volume
+          secret:
+            secretName: {{ .Values.admin.truststore.secret }}
+        {{- end }}
+        {{- if .Values.admin.keystore.secret }}
+        - name: admin-keystore-volume
+          secret:
+            secretName: {{ .Values.admin.keystore.secret }}
+        {{- end }}
+        {{- if .Values.extraSecret.name }}
+        - name: extra-secret
+          secret:
+            secretName: "{{ .Values.extraSecret.name }}"
+        {{- end }}
+        {{- include "app.volumes" . | nindent 8 }}
+      {{- include "nodeSelector.nodePool" .  | nindent 6}}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- . | toYaml | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- . | toYaml | nindent 8 }}
+      {{- end }}

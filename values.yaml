@@ -1,0 +1,340 @@
+# Default values for ranger.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Labels to apply to all resources
+commonLabels: {}
+#  environment: dev
+#  myLabel: labelValue
+
+## registryCredentials set access to container images
+registryCredentials:
+  enabled: false
+  # Replace this with Docker Registry that you use
+  registry:
+  username:
+  password:
+
+# Instead of setting registryCredentials you can pass list of secrets, in format:
+# imagePullSecrets:
+#  - name: secret1
+#  - name: secret2
+# Select one method of selecting registryCredentials otherwise you'll receive an error
+imagePullSecrets:
+
+# ------------------------------------------------------------------------------
+# Ranger Additional Volumes mount. General purpose.
+# Provided as array
+#  - path: <<container mount path>>
+#    subPath: <<optional key in ConfigMap or Secret>>
+#    volume: {}
+#
+#  Volume definition
+#  https://kubernetes.io/docs/concepts/storage/volumes/#types-of-volumes
+#  without name parameter.
+#
+# If you specify 'path' only, a directory named 'path' is created. When mounting ConfigMap
+# or Secret, files are created in this directory for each key.
+#
+# If you specify 'subPath', specific key named 'subPath' from ConfigMap or Secret is mounted as
+# a file with name provided by 'path'.
+#
+# E.g. for K8S emptyDir volume
+# additionalVolumes:
+#   - path: /mnt/InContainer
+#     volume:
+#       emptyDir: {}
+#
+# ------------------------------------------------------------------------------
+additionalVolumes: []
+
+# admin set values for ranger admin server
+admin:
+  image:
+    repository: "harbor.starburstdata.net/starburstdata/starburst-ranger-admin"
+    tag: "2.1.0-e.43"
+    pullPolicy: "IfNotPresent"
+  port: 6080
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: 2
+    limits:
+      memory: "1Gi"
+      cpu: 2
+  passwords:
+    admin: "RangerPassword1"
+    tagsync: "TagSyncPassword1"
+    usersync: "UserSyncPassword1"
+    keyadmin: "KeyAdminPassword1"
+  # optional truststore containing CA certificates to use instead of default one
+  truststore:
+    # existing secret containing truststore.jks key
+    secret:
+    # password to truststore
+    password:
+  keystore:
+    # existing secret containing keystore.jks key
+    secret:
+    # password to keystore
+    password:
+  # startup probe timeouts may need to be modified in case there is a significant latency to the DB instance
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # Allows to propagate environment variables from different sources like accordingly to K8S schema
+  # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envfromsource-v1-core
+  # e.g.
+  # envFrom:
+  #   - secretRef:
+  #       name: <<secret_name>>
+  envFrom: []
+  env: {}
+    # Additional env variables to pass to Ranger Admin.
+    # To pass Ranger install property, use variable with name RANGE__<property_name>,
+    # for example RANGER__authentication_method.
+  securityContext: {}
+    # Optionally configure a security context for a container
+
+usersync:
+  enabled: true
+  image:
+    repository: "harbor.starburstdata.net/starburstdata/ranger-usersync"
+    tag: "2.1.0-e.43"
+    pullPolicy: "IfNotPresent"
+  name: "ranger-usersync"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: 1
+    limits:
+      memory: "1Gi"
+      cpu: 1
+  tls:
+    # optional truststore containing CA certificate for ldap server
+    truststore:
+      # existing secret containing truststore.jks key
+      secret:
+      # password to truststore
+      password:
+  # startup probe timeouts may need to be modified in case there is a significant latency between Ranger Admin and the DB instance
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # Allows to propagate environment variables from different sources like accordingly to K8S schema
+  # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envfromsource-v1-core
+  # e.g.
+  # envFrom:
+  #   - secretRef:
+  #       name: <<secret_name>>
+  envFrom: []
+  env:
+    # Use RANGER__<property_name> variables to set Ranger install properties.
+    RANGER__SYNC_LDAP_URL: "ldap://ranger-ldap:389"
+    RANGER__SYNC_LDAP_BIND_DN: "cn=admin,dc=ldap,dc=example,dc=org"
+    RANGER__SYNC_LDAP_BIND_PASSWORD: "cieX7moong3u"
+    RANGER__SYNC_LDAP_SEARCH_BASE: "dc=ldap,dc=example,dc=org"
+    RANGER__SYNC_LDAP_USER_SEARCH_BASE: "ou=users,dc=ldap,dc=example,dc=org"
+    RANGER__SYNC_LDAP_USER_OBJECT_CLASS: "person"
+    RANGER__SYNC_GROUP_SEARCH_ENABLED: "true"
+    RANGER__SYNC_GROUP_USER_MAP_SYNC_ENABLED: "true"
+    RANGER__SYNC_GROUP_SEARCH_BASE: "ou=groups,dc=ldap,dc=example,dc=org"
+    RANGER__SYNC_GROUP_OBJECT_CLASS: "groupOfNames"
+  securityContext: {}
+    # Optionally configure a security context for a container
+
+# add tagsync container
+tagsync:
+  enabled: true
+  image:
+    repository: "harbor.starburstdata.net/starburstdata/ranger-tagsync"
+    tag: "2.1.0-e.43"
+    pullPolicy: "IfNotPresent"
+  name: "ranger-tagsync"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: 1
+    limits:
+      memory: "1Gi"
+      cpu: 1
+  tls:
+    # optional truststore containing CA certificate for ldap server
+    truststore:
+      # existing secret containing truststore.jks key
+      secret:
+      # password to truststore
+      password:
+  # Allows to propagate environment variables from different sources like accordingly to K8S schema
+  # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envfromsource-v1-core
+  # e.g.
+  # envFrom:
+  #   - secretRef:
+  #       name: <<secret_name>>
+  envFrom: []
+  env:
+    # Use RANGER__<property_name> variables to set Ranger install properties.
+    RANGER__TAGSYNC_ATLAS_CUSTOM_RESOURCE_MAPPERS: "com.starburst.ranger.tagsync.AtlasStarburstResourceMapper"
+    RANGER__TAGSYNC_ATLAS_TO_RANGER_SERVICE_MAPPING: "starburst,starburst,starburst-enterprise"
+  securityContext: {}
+    # Optionally configure a security context for a container
+
+# database contains settings for Ranger database backend
+database:
+  # type is internal | external
+  type: "internal"
+  internal:
+    image:
+      repository: "library/postgres"
+      tag: "10.6"
+      pullPolicy: "IfNotPresent"
+    volume:
+      # use one of:
+      # - existingVolumeClaim to specify existing PVC
+      # - persistentVolumeClaim to specify spec for new PVC
+      # - other volume type inline configuration, e.g. emptyDir
+      # Examples:
+      # existingVolumeClaim: "my_claim"
+      # persistentVolumeClaim:
+      #  storageClassName:
+      #  accessModes:
+      #    - ReadWriteOnce
+      #  resources:
+      #    requests:
+      #      storage: "2Gi"
+      emptyDir: {}
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: 2
+      limits:
+        memory: "1Gi"
+        cpu: 2
+    port: 5432
+    databaseName: "ranger"
+    databaseUser: "ranger"
+    databasePassword: "RangerPass123"
+    databaseRootUser: "rangeradmin"
+    databaseRootPassword: "RangerAdminPass123"
+    # Allows to propagate environment variables from different sources like accordingly to K8S schema
+    # https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envfromsource-v1-core
+    # e.g.
+    # envFrom:
+    #   - secretRef:
+    #       name: <<secret_name>>
+    envFrom: []
+    env: {}
+    securityContext: {}
+      # Optionally configure a security context for a container
+  # for type external
+  external:
+    # if tls is enabled for db connections, truststore in the admin section needs to be setup
+    tls:
+      enabled: false
+    port:
+    host:
+    databaseName:
+    databaseUser:
+    databasePassword:
+    databaseRootUser:
+    databaseRootPassword:
+
+# Service type / definition
+# Ref: https://kubernetes.io/docs/concepts/services-networking/connect-applications-service/#exposing-the-service
+#
+expose:
+  # one of: clusterIp, nodePort, loadBalancer, ingress
+  type: "clusterIp"
+  clusterIp:
+    name: "ranger"
+    ports:
+      http:
+        port: 6080
+  nodePort:
+    name: "ranger"
+    ports:
+      http:
+        port: 6080
+        nodePort: 30680
+    extraLabels: {}
+  loadBalancer:
+    name: "ranger"
+    IP: ""
+    ports:
+      http:
+        port: 6080
+    annotations: {}
+    sourceRanges: []
+  ingress:
+    ingressName: "ranger-ingress"
+    serviceName: "ranger"
+    servicePort: 6080
+    ingressClassName:
+    tls:
+      enabled: true
+      secretName:
+    host:
+    path: "/"
+    # pathType is one of ImplementationSpecific, Prefix, or Exact.
+    pathType: "ImplementationSpecific"
+    annotations: {}
+
+# datasources - list of Starburst Enterprise datasources to configure Ranger
+# services. It is mounted as file /config/datasources.yaml inside
+# container and processed by init script.
+datasources:
+  - name: "fake-starburst-1"
+    host: "starburst.fake-starburst-1-namespace"
+    port: 8080
+    username: "starburst"
+    password: "Password123"
+  - name: "fake-starburst-2"
+    host: "starburst.fake-starburst-2-namespace"
+    port: 8080
+    username: "starburst"
+    password: Password123
+
+# initFile - optional startup script path or contents, called with container name
+# as parameter - either ranger-admin or ranger-usersync
+# Use "files/initFile.sh" to enable Starburst Enterprise integration using datasources section
+#
+# If using init script content, it must end with a command to launch Ranger Admin.
+# e.g.
+# initFile: |
+#   #!/bin/bash
+#   echo "Custom init for $1"
+#   exec bash /init/initFile.sh "$@"
+initFile:
+
+# List of extra arguments to be passed to initFile
+extraArguments:
+
+# Below secret will be mounted in /extra-secret/ within containers
+extraSecret:
+  # Replace this with secret name that should be used from namespace you are deploying to
+  name:
+  # Optionally 'file' may be provided which will be deployed as secret with given 'name' in used namespace.
+  file:
+
+## Additional annotations for deployment
+deploymentAnnotations: {}
+
+## Additional annotations for pod
+podAnnotations: {}
+
+## Node labels for pod assignment
+## Ref: https://kubernetes.io/docs/user-guide/node-selection/
+##
+nodeSelector: {}
+
+## Tolerations
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#taints-and-tolerations-beta-feature
+tolerations: []
+
+## Affinity and anti-affinity
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+affinity: {}
+
+## Service account for Ranger pod
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+serviceAccountName:

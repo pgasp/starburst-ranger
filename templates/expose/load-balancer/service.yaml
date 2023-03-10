@@ -1,0 +1,30 @@
+{{- if eq .Values.expose.type "loadBalancer" }}
+{{- $loadBalancer := .Values.expose.loadBalancer }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $loadBalancer.name }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  {{- if $loadBalancer.annotations }}
+  {{- with $loadBalancer.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  {{- with $loadBalancer.sourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $loadBalancer.IP }}
+  loadBalancerIP: {{ $loadBalancer.IP }}
+  {{- end }}
+  ports:
+    - name: http
+      port: {{ $loadBalancer.ports.http.port }}
+      targetPort: {{ .Values.admin.port }}
+  selector:
+    {{- include "app.labels" . | nindent 4 }}
+{{- end }}
