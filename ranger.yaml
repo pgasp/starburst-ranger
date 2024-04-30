@@ -1,0 +1,151 @@
+
+expose:
+  type: "ingress"
+  ingress:
+    annotations:
+      cert-manager.io/cluster-issuer: acme
+    host: ranger-pgasp-demo.enablement.starburstdata.net
+    ingressName: "ranger-ingress"
+    serviceName: "ranger"
+    servicePort: 6080
+    ingressClassName: nginx
+    tls:
+      enabled: true
+      secretName: tls-secret-ranger
+    path: "/"
+    pathType: Prefix
+
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: apps
+          operator: In
+          values: 
+          - base
+
+# The tollerance in this YAML is specifically for Azure so it could be removed or commented out
+#    for other clouds. However, it also won't hurt to leave since it is just saying to allow somethign
+#    if a taint exists and when it doesn't the tollerance does nothing.
+tolerations:
+  - key: "kubernetes.azure.com/scalesetpriority"
+    operator: "Equal"
+    value: "spot"
+    effect: "NoSchedule"
+
+
+datasources:
+  - name: starburst-enterprise
+    host: coordinator
+    port: 8080
+    username: starburst_service
+    password: StarburstR0cks!
+
+database:
+  external:
+    databaseName: ranger
+    databasePassword: StarburstR0cks!
+    databaseRootPassword: StarburstR0cks!
+    databaseRootUser: postgres
+    databaseUser: postgres
+    host: pascal-gasp-bootcamp.cupdzjlj8tpf.eu-west-2.rds.amazonaws.com
+    port: 5432
+    tls:
+      enabled: false
+  type: external  
+
+admin:
+  passwords:
+    admin: RangerPassword1
+    keyadmin: KeyAdminPassword1
+    service: StarburstServicePassword1
+    tagsync: TagSyncPassword1
+    usersync: UserSyncPassword1
+    rangertagsync: rangertagsyncdemo
+
+  port: 6080
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: 0.5
+    limits:
+      memory: "1Gi"
+      cpu: 1
+  securityContext: {}
+  serviceUser: starburst_service
+  truststore:
+    password: null
+    secret: null
+  env:
+    RANGER__audit_store: elasticsearch
+    RANGER__audit_elasticsearch_urls: elasticsearch-master-headless
+    RANGER__audit_elasticsearch_port: 9200
+    RANGER__audit_elasticsearch_protocol: https
+    RANGER__audit_elasticsearch_user: elastic
+    RANGER__audit_elasticsearch_password: elastic
+    RANGER__audit_elasticsearch_index: ranger_audits
+    RANGER__audit_elasticsearch_bootstrap_enabled: true
+
+usersync:
+  enabled: true
+  name: "ranger_usersync"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: 0.5
+    limits:
+      memory: "1Gi"
+      cpu: 1
+  env:
+    # Here User sync is set to sync only groups from LDAP
+    # ldap://sa.field
+    # eng.starburstdata.net:389,  ldapBindDn: CN=Bind User,OU=Users,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net,  ldapBindPassword: ***** ,  ldapAuthenticationMech
+    # anism: simple,  searchBase: dc=ldap,dc=example,dc=org,  userSearchBase: [ou=users,dc=ldap,dc=example,dc=org],  userSearchScope: 2,  userObjectClass: person,  userSearchFi
+    # lter: ,  extendedUserSearchFilter: null,  userNameAttribute: cn,  userSearchAttributes: [uSNChanged, cn, modifytimestamp, objectid, userurincipaluame],  userGroupNameAttr
+    # ibuteSet: null,  otherUserAttributes: [userurincipaluame],  pagedResultsEnabled: true,  pagedResultsSize: 500,  groupSearchEnabled: true,  groupSearchBase: [OU=SEP,OU=Use
+    # rs,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net],  groupSearchScope: 2,  groupObjectClass: group,  groupSearchFilter: ,  extendedGroupSearchFilter: (&null(|(n
+    # one={0})(none={1}))),  extendedAllGroupsSearchFilter: null,  groupMemberAttributeName: none,  groupNameAttribute: cn, groupSearchAttributes: [uSNChanged, displayname, cn,
+    #  none, modifytimestamp, objectid], groupSearchFirstEnabled: true, userSearchEnabled: false,  ldapReferral: follow
+    RANGER__SYNC_LDAP_URL: ldap://sa.fieldeng.starburstdata.net:389
+    RANGER__SYNC_LDAP_BIND_DN: CN=Bind User,OU=Users,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net
+    RANGER__SYNC_LDAP_BIND_PASSWORD: StarburstR0cks!
+    # RANGER__SYNC_LDAP_SEARCH_BASE: OU=SEP,OU=Users,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net
+    # RANGER__SYNC_LDAP_USER_SEARCH_BASE: OU=SEP,OU=Users,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net
+    # RANGER__SYNC_LDAP_USER_OBJECT_CLASS: person
+    # RANGER__SYNC_LDAP_USER_NAME_ATTRIBUTE: sAMAccountName
+    RANGER__SYNC_GROUP_SEARCH_ENABLED: true
+    RANGER__SYNC_GROUP_USER_MAP_SYNC_ENABLED: true
+    RANGER__SYNC_GROUP_SEARCH_BASE: OU=SEP,OU=Users,OU=sa-fieldeng,DC=sa,DC=fieldeng,DC=starburstdata,DC=net
+    RANGER__SYNC_GROUP_OBJECT_CLASS: group
+    RANGER__GROUP_BASED_ROLE_ASSIGNMENT_RULES: ROLE_SYS_ADMIN:g:sepadmins
+    RANGER__SYNC_INTERVAL: 60
+    RANGER__SYNC_USER_SEARCH_ENABLED: false
+    # Here paramter to look in group first even group is empty 
+    RANGER__SYNC_GROUP_SEARCH_FIRST_ENABLED: true
+    # to make the group empty we search at unknown class
+    RANGER__SYNC_GROUP_MEMBER_ATTRIBUTE_NAME: none
+    RANGER__SYNC_LDAP_DELTASYNC: false
+    RANGER__SYNC_LDAP_REFERRAL: follow
+
+
+
+initFile: |
+  #!/usr/bin/env bash
+  if [ "${1:-}" == "ranger-usersync" ]; then
+    echo "ranger-usersync"
+    # expose group search first enabled property
+    sed -i '$aSYNC_GROUP_SEARCH_FIRST_ENABLED=ranger.usersync.group.search.first.enabled' ${RANGER_HOME}/templates/installprop2xml.properties
+    sed -i "s|</configuration>|\t<property>\n\t\t<name>ranger.usersync.group.search.first.enabled</name>\n\t\t<value></value>\n\t</property>\n</configuration>|g" ${RANGER_HOME}/templates/ranger-ugsync-template.xml
+    #expose user search enabled property
+    sed -i '$aSYNC_USER_SEARCH_ENABLED=ranger.usersync.user.searchenabled' ${RANGER_HOME}/templates/installprop2xml.properties
+    sed -i "s|</configuration>|\t<property>\n\t\t<name>ranger.usersync.user.searchenabled</name>\n\t\t<value></value>\n\t</property>\n</configuration>|g" ${RANGER_HOME}/templates/ranger-ugsync-template.xml
+  fi
+  if [ "${1:-}" == "ranger-admin" ]; then
+    curl https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.19.0/log4j-api-2.19.0.jar --output /opt/ranger/starburst-ranger-server-admin-2.1.0-e.44/ews/lib/log4j-api-2.19.0.jar
+    curl https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.19.0/log4j-core-2.19.0.jar --output /opt/ranger/starburst-ranger-server-admin-2.1.0-e.44/ews/lib/log4j-core-2.19.0.jar
+  fi
+  exec bash /opt/ranger/start.sh "$@"
+
+  log4j-core
